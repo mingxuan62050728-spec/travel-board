@@ -1,0 +1,14 @@
+{
+  "name": "travel-board-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "足迹板 TravelBoard - Cloudflare Workers full-stack edition",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
