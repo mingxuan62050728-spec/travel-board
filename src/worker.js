@@ -1,6 +1,18 @@
 const MAX_BODY = 200 * 1024 * 1024;
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 const MEDIA_CHUNK_SIZE = 20 * 1024 * 1024;
+const STATIC_FILES = new Set([
+  '/index.html',
+  '/app.js',
+  '/app.css',
+  '/vendor/leaflet/leaflet.js',
+  '/vendor/leaflet/leaflet.css',
+  '/vendor/leaflet/images/layers.png',
+  '/vendor/leaflet/images/layers-2x.png',
+  '/vendor/leaflet/images/marker-icon.png',
+  '/vendor/leaflet/images/marker-icon-2x.png',
+  '/vendor/leaflet/images/marker-shadow.png',
+]);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -1463,10 +1475,60 @@ async function handleApiRequest(request, env) {
   }).toResponse();
 }
 
+async function serveStatic(request, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+  if (env.ASSETS) return env.ASSETS.fetch(request);
+
+  const url = new URL(request.url);
+  let pathname;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    return new Response('Bad Request', { status: 400 });
+  }
+  if (pathname === '/') pathname = '/index.html';
+  if (!STATIC_FILES.has(pathname)) {
+    return new Response('Not Found', { status: 404 });
+  }
+
+  const upstream =
+    'https://cdn.jsdelivr.net/gh/mingxuan62050728-spec/travel-board@main/public' +
+    pathname;
+  const cache = caches.default;
+  const cacheKey = new Request(upstream, { method: 'GET' });
+  let response = await cache.match(cacheKey);
+  if (!response) {
+    response = await fetch(upstream, {
+      cf: {
+        cacheEverything: true,
+        cacheTtlByStatus: { '200-299': 3600, '404': 60, '500-599': 0 },
+      },
+    });
+    if (response.ok) await cache.put(cacheKey, response.clone());
+  }
+  if (!response.ok) return new Response('Not Found', { status: 404 });
+
+  const headers = new Headers();
+  const mime = MIME[extname(pathname)] || 'application/octet-stream';
+  headers.set('Content-Type', mime);
+  headers.set(
+    'Cache-Control',
+    pathname === '/index.html' || pathname === '/app.js' || pathname === '/app.css'
+      ? 'no-cache'
+      : 'public, max-age=3600',
+  );
+  return new Response(request.method === 'HEAD' ? null : response.body, {
+    status: 200,
+    headers,
+  });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) return handleApiRequest(request, env);
-    return env.ASSETS.fetch(request);
+    return serveStatic(request, env);
   },
 };
